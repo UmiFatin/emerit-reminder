@@ -396,8 +396,8 @@ $("review").addEventListener("click",e=>{
 });
 render();
 /* ---- Online database (Supabase). Leave the two values empty to keep everything on this device only. ---- */
-const SUPABASE_URL="PASTE_YOUR_PROJECT_URL";
-const SUPABASE_KEY="PASTE_YOUR_ANON_PUBLIC_KEY";
+const SUPABASE_URL="https://ydtjzxsvzzbywicndmlz.supabase.co/rest/v1/";
+const SUPABASE_KEY="sb_publishable_V2y4Cpinhna-Kl3QmSqEow_htM-LhWf";
 let sb=null,user=null;
 function uid(){return crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==="x"?r:(r&3|8)).toString(16)})}
 const toRow=e=>({id:e.id,title:e.title,event_date:e.date,start_time:e.start||"",end_time:e.end||"",link:e.link||"",note:e.note||""});
