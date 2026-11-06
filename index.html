@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4b2a8c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="eMerit">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>eMerit UiTM Event Reminder</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⭐</text></svg>">
 <style>
@@ -52,13 +58,40 @@ h3{margin:18px 0 6px;font-size:1rem}
 .rv .top{display:flex;gap:8px;align-items:center}
 .rv .top input[type=checkbox]{width:auto}
 .rv .top b{font:600 .85rem system-ui,sans-serif}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.chip{cursor:pointer}
+.lnk{border:none;background:none;padding:0;text-align:left;font:600 1rem system-ui,sans-serif;color:var(--ink);text-decoration:underline;text-decoration-color:var(--gold);text-underline-offset:3px;cursor:pointer}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);padding:0;width:min(480px,92vw)}
+dialog::backdrop{background:rgba(10,6,20,.55)}
+#dbody{padding:20px}
+#dbody h2{margin:0 0 6px;font-size:1.3rem}
+.badge{display:inline-block;margin:0 0 12px;padding:2px 10px;border-radius:99px;background:color-mix(in srgb,var(--gold) 28%,transparent);font:600 .8rem system-ui,sans-serif}
+dl{display:grid;grid-template-columns:80px 1fr;gap:8px 10px;margin:0 0 14px}
+dt{color:var(--mute);font:600 .8rem system-ui,sans-serif;padding-top:3px}
+dd{margin:0;word-break:break-word}
+dd a{color:var(--brand)}
+a.btn{display:inline-block;text-decoration:none;border-radius:8px;padding:7px 12px;font:.9rem system-ui,sans-serif;border:1px solid var(--brand);background:var(--brand);color:#fff}
+@media(prefers-color-scheme:dark){a.btn{color:#15101f}}
+#toasts{position:fixed;top:max(12px,env(safe-area-inset-top));right:12px;left:12px;max-width:380px;margin-left:auto;z-index:50;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--gold);border-radius:10px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.28);font:.9rem system-ui,sans-serif}
+.toast b{display:block;font-size:1rem}
+@media(max-width:560px){
+ header,main,#alerts{padding-left:12px;padding-right:12px}
+ .panel{padding:10px}
+ .grid{gap:2px}
+ .day{min-height:56px;padding:2px;font-size:.75rem}
+ .chip{font-size:0;height:6px;padding:0;border-radius:3px;pointer-events:none}
+}
 </style>
 </head>
 <body>
 <header>
   <h1>eMerit event reminder</h1>
   <p>Never miss an eMerit program. See what is on today and tomorrow.</p>
+  <button id="install" class="primary" hidden style="margin-top:10px">Install app</button>
 </header>
+<div id="toasts" aria-live="assertive"></div>
+<dialog id="dlg" aria-labelledby="dt"><div id="dbody"></div></dialog>
 <div id="alerts" aria-live="polite"></div>
 <main>
   <section class="panel" aria-label="Calendar">
@@ -112,12 +145,13 @@ h3{margin:18px 0 6px;font-size:1rem}
 
     <div class="actions">
       <button id="notif">Turn on alerts</button>
+      <button id="testalert">Test alert</button>
       <button id="ics">Download .ics</button>
       <button id="json">Backup</button>
       <button id="imp">Restore</button>
       <input type="file" id="file" accept=".json" hidden>
     </div>
-    <p style="font:.8rem system-ui;color:var(--mute);margin-top:10px">Alerts work while this page is open. For phone reminders when it is closed, download the .ics and import it into your calendar app.</p>
+    <p style="font:.8rem system-ui;color:var(--mute);margin-top:10px">You get an alert 30 minutes before and when each event starts, while the app is open or running in the background. For reminders when the app is fully closed, tap an event and choose "Add to phone calendar". On iPhone, add this site to your Home Screen first (Share, then Add to Home Screen).</p>
   </aside>
 </main>
 
@@ -145,7 +179,7 @@ function when(e){return e.start?fmt(e.start)+(e.end?" – "+fmt(e.end):""):"All 
 
 function itemHtml(e,withDate){
   const l=safeUrl(e.link);
-  return `<li class="ev"><div><b>${esc(e.title)}</b>
+  return `<li class="ev"><div><button class="lnk" data-open="${esc(e.id)}">${esc(e.title)}</button>
     <small>${withDate?e.date+" · ":""}${when(e)}${e.note?" · "+esc(e.note):""}</small>
     ${l?`<a href="${esc(l)}" target="_blank" rel="noopener">Open platform</a>`:""}</div>
     <button class="del" data-id="${esc(e.id)}" aria-label="Delete ${esc(e.title)}">✕</button></li>`;
@@ -156,7 +190,7 @@ function renderAlerts(){
   const blocks=[["Today",t],["Tomorrow",iso(tm)]].map(([name,d])=>{
     const evs=on(d);if(!evs.length)return"";
     return `<div class="alert"><h2>${name}: ${evs.length} eMerit event${evs.length>1?"s":""}</h2><ul>`+
-      evs.map(e=>`<li><b>${when(e)}</b> – ${esc(e.title)}${safeUrl(e.link)?` (<a href="${esc(e.link)}" target="_blank" rel="noopener">link</a>)`:""}</li>`).join("")+`</ul></div>`;
+      evs.map(e=>`<li><b>${when(e)}</b> – <button class="lnk" data-open="${esc(e.id)}">${esc(e.title)}</button>${safeUrl(e.link)?` (<a href="${esc(e.link)}" target="_blank" rel="noopener">link</a>)`:""}</li>`).join("")+`</ul></div>`;
   }).join("");
   $("alerts").innerHTML=blocks;
 }
@@ -170,7 +204,7 @@ function render(){
   for(let i=0;i<42;i++){
     const d=new Date(start);d.setDate(start.getDate()+i);const s=iso(d),evs=on(s);
     h+=`<button class="day ${d.getMonth()!==view.getMonth()?"out":""} ${s===today?"today":""} ${s===sel?"sel":""}" data-d="${s}" aria-label="${s}, ${evs.length} events"><b>${d.getDate()}</b>`+
-      evs.slice(0,2).map(e=>`<span class="chip">${esc(e.title)}</span>`).join("")+
+      evs.slice(0,2).map(e=>`<span class="chip" data-open="${esc(e.id)}" title="${esc(e.title)}">${esc(e.title)}</span>`).join("")+
       (evs.length>2?`<span style="font-size:.68rem;color:var(--mute)">+${evs.length-2} more</span>`:"")+`</button>`;
   }
   $("days").innerHTML=h;
@@ -184,7 +218,7 @@ function render(){
 
 $("prev").onclick=()=>{view.setMonth(view.getMonth()-1);render()};
 $("next").onclick=()=>{view.setMonth(view.getMonth()+1);render()};
-$("days").onclick=e=>{const b=e.target.closest(".day");if(!b)return;sel=sel===b.dataset.d?null:b.dataset.d;if(sel)$("d1").value=sel;render()};
+$("days").onclick=e=>{if(e.target.closest("[data-open]"))return;const b=e.target.closest(".day");if(!b)return;sel=sel===b.dataset.d?null:b.dataset.d;if(sel)$("d1").value=sel;render()};
 $("list").onclick=e=>{const b=e.target.closest(".del");if(!b)return;removeEvent(b.dataset.id)};
 
 $("add").onclick=()=>{
@@ -202,7 +236,7 @@ function download(name,text,type){
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
-$("ics").onclick=()=>{
+function buildIcs(events){
   const q=s=>String(s).replace(/([,;\\])/g,"\\$1").replace(/\n/g,"\\n");
   const stamp=new Date().toISOString().replace(/[-:]|\.\d+/g,"");
   const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//eMerit UiTM Reminder//EN"];
@@ -224,34 +258,109 @@ $("ics").onclick=()=>{
     L.push("BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+q(e.title),"TRIGGER:-PT30M","END:VALARM","END:VEVENT");
   });
   L.push("END:VCALENDAR");
-  download("emerit-events.ics",L.join("\r\n"),"text/calendar");
-};
+  return L.join("\r\n");
+}
+$("ics").onclick=()=>download("emerit-events.ics",buildIcs(events),"text/calendar");
 $("json").onclick=()=>download("emerit-backup.json",JSON.stringify(events,null,2),"application/json");
 $("imp").onclick=()=>$("file").click();
 $("file").onchange=e=>{const f=e.target.files[0];if(!f)return;
   f.text().then(t=>{try{const d=JSON.parse(t);if(Array.isArray(d)){addEvents(d.filter(x=>x&&x.title&&x.date).map(x=>({...x,id:uid()})))}}catch(err){$("err").textContent="That file is not a valid backup."}})};
 
-/* Browser alerts: 30 minutes before start, while the page is open */
-const fired=new Set();
-function checkAlerts(){
+/* ---- Event pop-up ---- */
+const dlg=$("dlg");let openId=null;
+const longDate=d=>new Date(d+"T00:00").toLocaleDateString("en-MY",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+function countdown(e){
+  const now=new Date(),days=Math.round((new Date(e.date+"T00:00")-new Date(iso(now)+"T00:00"))/864e5);
+  if(days>1)return"In "+days+" days";if(days===1)return"Tomorrow";if(days<0)return"Past event";
+  if(!e.start)return"Today";
+  const m=Math.round((new Date(e.date+"T"+e.start+":00")-now)/60000);
+  if(m>60)return"Today, in "+Math.floor(m/60)+" h "+(m%60)+" min";
+  if(m>0)return"Starting in "+m+" min";
+  return"Started today";
+}
+function openEvent(id){
+  const e=events.find(x=>x.id===id);if(!e)return;openId=id;
+  const l=safeUrl(e.link);
+  $("dbody").innerHTML=`<h2 id="dt">${esc(e.title)}</h2><p class="badge">${countdown(e)}</p>
+   <dl><dt>Date</dt><dd>${longDate(e.date)}</dd><dt>Time</dt><dd>${when(e)}</dd>
+   ${e.note?`<dt>Details</dt><dd>${esc(e.note)}</dd>`:""}
+   ${l?`<dt>Platform</dt><dd><a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a></dd>`:""}</dl>
+   <div class="actions">${l?`<a class="btn" href="${esc(l)}" target="_blank" rel="noopener">Open platform</a>`:""}
+   <button id="dics">Add to phone calendar</button><button id="ddel">Delete</button><button id="dclose">Close</button></div>`;
+  if(!dlg.open)dlg.showModal();
+}
+dlg.addEventListener("click",e=>{
+  if(e.target===dlg){dlg.close();return}
+  if(e.target.id==="dclose")dlg.close();
+  if(e.target.id==="dics"){const ev=events.find(x=>x.id===openId);if(ev)download("emerit-event.ics",buildIcs([ev]),"text/calendar")}
+  if(e.target.id==="ddel"&&confirm("Delete this event?")){removeEvent(openId);dlg.close()}
+});
+document.addEventListener("click",e=>{const o=e.target.closest("[data-open]");if(o&&!o.closest("#dlg"))openEvent(o.dataset.open)});
+
+/* ---- Reminders: 30 minutes before and at start time ---- */
+let firedSet;
+try{firedSet=new Set(JSON.parse(localStorage.getItem("emerit-fired")||"[]"))}catch(e){firedSet=new Set()}
+function markFired(k){firedSet.add(k);try{localStorage.setItem("emerit-fired",JSON.stringify([...firedSet].slice(-300)))}catch(e){}}
+function beep(){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();
+  o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.2,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.6);o.start();o.stop(a.currentTime+.6)}catch(e){}}
+function toast(title,body,id){
+  const t=document.createElement("div");t.className="toast";t.setAttribute("role","alert");
+  t.innerHTML=`<b>${esc(title)}</b><span>${esc(body)}</span><div class="actions" style="margin-top:8px">${id?`<button class="primary" data-open="${esc(id)}">View</button>`:""}<button data-x>Dismiss</button></div>`;
+  t.addEventListener("click",e=>{if(e.target.closest("button"))t.remove()});
+  $("toasts").appendChild(t);setTimeout(()=>t.remove(),60000);
+}
+async function notify(title,body,id){
+  toast(title,body,id);beep();
+  try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
   if(!("Notification" in window)||Notification.permission!=="granted")return;
+  const opts={body,tag:"emerit-"+(id||"x")+title,icon:"/icon-192.png",badge:"/icon-192.png",data:{id},requireInteraction:true};
+  try{
+    const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
+    if(reg)await reg.showNotification(title,opts);else new Notification(title,opts);
+  }catch(e){try{new Notification(title,opts)}catch(_){}}
+}
+function checkAlerts(){
   const now=Date.now();
   events.forEach(e=>{
     if(!e.start)return;
-    const at=new Date(e.date+"T"+e.start+":00").getTime();
-    const diff=at-now;
-    if(diff>0&&diff<=30*60000&&!fired.has(e.id)){
-      fired.add(e.id);
-      new Notification("eMerit in "+Math.ceil(diff/60000)+" min",{body:e.title+" · "+when(e)});
-    }
+    const at=new Date(e.date+"T"+e.start+":00").getTime();if(isNaN(at))return;
+    const base=e.id+"|"+e.date+"|"+e.start,pre=base+"|pre",st=base+"|now";
+    if(now>=at-30*60000&&now<at&&!firedSet.has(pre)){
+      markFired(pre);notify("Starting in "+Math.max(1,Math.ceil((at-now)/60000))+" min",e.title+" · "+when(e),e.id)}
+    else if(now>=at&&now<at+15*60000&&!firedSet.has(st)){
+      markFired(st);notify("Starting now",e.title+" · "+when(e),e.id)}
   });
 }
-$("notif").onclick=()=>{
-  if(!("Notification" in window)){$("err").textContent="This browser does not support alerts.";return}
-  Notification.requestPermission().then(p=>{$("notif").textContent=p==="granted"?"Alerts on":"Alerts blocked"})
+function setNotif(){
+  if(!("Notification" in window)){$("notif").textContent="Alerts not supported";return}
+  const p=Notification.permission;
+  $("notif").textContent=p==="granted"?"Alerts on":p==="denied"?"Alerts blocked":"Turn on alerts";
+}
+$("notif").onclick=async()=>{
+  if(!("Notification" in window)){$("err").textContent="This browser cannot show system alerts. On iPhone, add the site to your Home Screen first. In-app alerts still work.";return}
+  if(Notification.permission==="denied"){$("err").textContent="Alerts are blocked. Allow notifications for this site in your browser settings, then try again.";return}
+  $("err").textContent="";
+  const p=await Notification.requestPermission();setNotif();
+  if(p==="granted")notify("Alerts are on","You will be reminded 30 minutes before and when each eMerit event starts.");
 };
-if("Notification" in window&&Notification.permission==="granted")$("notif").textContent="Alerts on";
-setInterval(checkAlerts,30000);checkAlerts();
+$("testalert").onclick=()=>notify("Test alert","This is how your eMerit reminder will look.");
+setNotif();
+setInterval(checkAlerts,15000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkAlerts()});
+checkAlerts();
+
+/* ---- Install as an app + offline support ---- */
+let deferred=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferred=e;$("install").hidden=false});
+$("install").onclick=async()=>{if(!deferred)return;deferred.prompt();await deferred.userChoice;deferred=null;$("install").hidden=true};
+window.addEventListener("appinstalled",()=>{$("install").hidden=true});
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
+  navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.open)openEvent(e.data.open)});
+}
+const deepId=new URLSearchParams(location.search).get("event");
+if(deepId)setTimeout(()=>openEvent(deepId),600);
 
 /* ---- Read event details from an image (free, runs in your browser) ---- */
 let found=[];
